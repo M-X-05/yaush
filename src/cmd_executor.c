@@ -42,19 +42,55 @@ void execute_cd(ASTNode *node)
 }
 
 // 执行内置命令
-int execute_builtin_command(ASTNode *node)
+int execute_builtin_command(ASTNode *node, int input_fd, int output_fd)
 {
+    // 保存标准输入输出的文件描述符
+    int saved_stdin = dup(STDIN_FILENO);
+    int saved_stdout = dup(STDOUT_FILENO);
+    int is_builtin_command = 0;
+
+    if (input_fd != -1)
+    {
+        if (dup2(input_fd, STDIN_FILENO) == -1)
+        {
+            perror("dup2");
+            close(input_fd);
+            return;
+        }
+    }
+    if (output_fd != -1)
+    {
+        if (dup2(output_fd, STDOUT_FILENO) == -1)
+        {
+            perror("dup2");
+            close(output_fd);
+            return;
+        }
+    }
+
     if (strcmp(node->command.command, "echo") == 0)
     {
         execute_echo(node);
-        return 1; // 标记命令为内置命令
+        is_builtin_command = 1;
     }
     else if (strcmp(node->command.command, "cd") == 0)
     {
         execute_cd(node);
-        return 1;
+        is_builtin_command = 1;
     }
-    return 0; // 不是内置命令
+    // 恢复标准输入输出
+    if (dup2(saved_stdin, STDIN_FILENO) == -1)
+    {
+        perror("dup2 restore stdin");
+    }
+    if (dup2(saved_stdout, STDOUT_FILENO) == -1)
+    {
+        perror("dup2 restore stdout");
+    }
+    // 关闭保存的文件描述符
+    close(saved_stdin);
+    close(saved_stdout);
+    return is_builtin_command; // 不是内置命令
 }
 
 // 查找命令的可执行文件
@@ -226,7 +262,7 @@ void execute_external_command(ASTNode *node, int input_fd, int output_fd)
 void execute_command_node(ASTNode *node, int input_fd, int output_fd)
 {
 
-    if (!execute_builtin_command(node))
+    if (!execute_builtin_command(node, input_fd, output_fd))
     {
         // 执行外部命令
         execute_external_command(node, input_fd, output_fd);
